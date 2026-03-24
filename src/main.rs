@@ -6,16 +6,16 @@ use std::process;
 #[derive(Parser, Debug)]
 #[command(author, version, about = "Movie crawler with login support")]
 struct Args {
-    #[arg(short, long, default_value = "https://login2.scrape.center/")]
+    #[arg(short = 'u', long, default_value = "https://login2.scrape.center/")]
     url: String,
 
-    #[arg(short, long, default_value = "admin")]
+    #[arg(short = 'n', long, default_value = "admin")]
     username: String,
 
-    #[arg(short, long, default_value = "admin")]
+    #[arg(short = 'p', long, default_value = "admin")]
     password: String,
 
-    #[arg(short, long, value_enum, default_value = "json")]
+    #[arg(short = 'o', long, value_enum, default_value = "json")]
     output: OutputFormat,
 }
 
@@ -51,7 +51,7 @@ async fn main() {
         }
     };
 
-    match crawler.crawl_with_login().await {
+    match crawler.crawl_movies().await {
         Ok(result) => {
             info!("Successfully crawled {} movies", result.total);
 

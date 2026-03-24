@@ -1,6 +1,5 @@
-use log::{debug, info, warn};
+use log::info;
 use reqwest::Client;
-use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::Duration;
@@ -10,13 +9,15 @@ use url::Url;
 #[derive(Error, Debug)]
 pub enum CrawlerError {
     #[error("Network error: {0}")]
-    NetworkError(#[from] reqwest::Error),
+    NetworkError(String),
     #[error("Login failed: {0}")]
     LoginFailed(String),
     #[error("Parse error: {0}")]
     ParseError(String),
     #[error("Session error: {0}")]
     SessionError(String),
+    #[error("Spider error: {0}")]
+    SpiderError(String),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,7 +45,7 @@ impl MovieCrawler {
             .timeout(Duration::from_secs(30))
             .cookie_store(true)
             .build()
-            .map_err(|e| CrawlerError::NetworkError(e))?;
+            .map_err(|e| CrawlerError::NetworkError(e.to_string()))?;
 
         let base_url = Url::parse(base_url)
             .map_err(|e| CrawlerError::ParseError(e.to_string()))?;
@@ -57,9 +58,13 @@ impl MovieCrawler {
         })
     }
 
-    pub async fn login(&mut self) -> Result<bool, CrawlerError> {
-        info!("Attempting to login to {}", self.base_url);
+    pub async fn crawl_movies(&mut self) -> Result<CrawlResult, CrawlerError> {
+        info!(
+            "Starting to crawl movies from {}",
+            self.base_url
+        );
 
+        // 首先使用 reqwest 登录
         let login_url = self.base_url.join("login").unwrap_or(self.base_url.clone());
 
         let params = [
@@ -72,118 +77,91 @@ impl MovieCrawler {
             .post(login_url.as_str())
             .form(&params)
             .send()
-            .await?;
+            .await
+            .map_err(|e| CrawlerError::NetworkError(e.to_string()))?;
 
-        let status = response.status();
-        let body = response.text().await.unwrap_or_default();
-
-        if status.is_success() || status.as_u16() == 302 || status.as_u16() == 200 {
-            info!("Login successful");
-            Ok(true)
-        } else {
-            warn!("Login failed with status: {}", status);
-            Err(CrawlerError::LoginFailed(format!(
-                "Status: {}, Body: {}",
-                status, body
-            )))
+        if !response.status().is_success() {
+            return Err(CrawlerError::LoginFailed(format!("Login failed with status: {}", response.status())));
         }
-    }
 
-    pub async fn crawl_movies(&mut self) -> Result<CrawlResult, CrawlerError> {
-        info!("Starting to crawl movies from {}", self.base_url);
-
-        let response = self
-            .client
-            .get(self.base_url.as_str())
-            .send()
-            .await?;
-
-        let body = response.text().await?;
+        // 检查登录是否真正成功（通过检查返回内容）
+        let login_body = response.text().await.unwrap_or_default();
         
-        // 保存页面内容到文件以便分析
+        // 检查是否包含登录失败的标识（根据网站实际情况调整）
+        if login_body.contains("用户名或密码错误") || login_body.contains("Invalid username or password") {
+            return Err(CrawlerError::LoginFailed("Login failed: Invalid username or password".to_string()));
+        }
+
+        info!("Login successful");
+
+        // 登录后访问主页
+        let home_url = self.base_url.as_str();
+        let home_response = self
+            .client
+            .get(home_url)
+            .send()
+            .await
+            .map_err(|e| CrawlerError::NetworkError(e.to_string()))?;
+
+        let home_body = home_response.text().await.unwrap_or_default();
+
+        // 调试：保存 HTML 内容到文件
         use std::fs::File;
         use std::io::Write;
-        if let Ok(mut file) = File::create("page_content.html") {
-            let _ = file.write_all(body.as_bytes());
-            info!("Page content saved to page_content.html");
+        if let Ok(mut file) = File::create("debug_home.html") {
+            let _ = file.write_all(home_body.as_bytes());
+            info!("Saved home page HTML to debug_home.html");
         }
-        
-        let document = Html::parse_document(&body);
 
-        // 提取 class="el-card__body" 中 class="name" 的内容和 href
-        let movie_links = Selector::parse("a.name")
-            .map_err(|e| CrawlerError::ParseError(e.to_string()))?;
-
+        // 解析 HTML 提取电影链接和名称
         let mut movies: Vec<Movie> = Vec::new();
         let mut seen_urls: HashMap<String, bool> = HashMap::new();
 
-        // 调试：计算找到的链接数量
-        let link_count = document.select(&movie_links).count();
-        info!("Found {} movie links with class='name'", link_count);
-
-        for element in document.select(&movie_links) {
-            if let Some(href) = element.value().attr("href") {
-                let full_url = self.base_url.join(href).unwrap_or_else(|_| {
-                    Url::parse(&format!("{}{}", self.base_url, href)).unwrap()
-                });
-
-                let url_str = full_url.to_string();
-                if seen_urls.contains_key(&url_str) {
-                    continue;
-                }
-                seen_urls.insert(url_str.clone(), true);
-
-                // 从链接中提取电影名称
-                let name = element.text().collect::<String>().trim().to_string();
-                
-                debug!("Extracted movie: '{}' - {}", name, url_str);
-
-                if !name.is_empty() {
-                    movies.push(Movie {
-                        name,
-                        url: url_str,
-                    });
-                }
-            }
-        }
+        // 简单的 HTML 解析，寻找电影信息
+        let lines: Vec<&str> = home_body.lines().collect();
         
-        info!("Added {} movies to the list", movies.len());
-
-        if movies.is_empty() {
-            info!("No movies found with links, trying to parse from page content");
-            let all_links = Selector::parse("a[href]")
-                .map_err(|e| CrawlerError::ParseError(e.to_string()))?;
-
-            for element in document.select(&all_links) {
-                if let Some(href) = element.value().attr("href") {
-                    let href_lower = href.to_lowercase();
-                    if href_lower.contains("movie")
-                        || href_lower.contains("film")
-                        || href_lower.contains("detail")
-                        || href_lower.contains("title")
-                        || href_lower.contains("film")
-                        || href_lower.contains("show")
-                    {
-                        let full_url = self.base_url.join(href).unwrap_or_else(|_| {
-                            Url::parse(&format!("{}{}", self.base_url, href)).unwrap()
-                        });
-
-                        let url_str = full_url.to_string();
-                        if seen_urls.contains_key(&url_str) {
-                            continue;
-                        }
-                        seen_urls.insert(url_str.clone(), true);
-
-                        let name = element.text().next().map(|s| s.trim().to_string());
-
-                        if let Some(movie_name) = name {
-                            if !movie_name.is_empty() && movie_name.len() < 200 {
-                                movies.push(Movie {
-                                    name: movie_name,
-                                    url: url_str,
-                                });
+        for i in 0..lines.len() {
+            let line = lines[i];
+            
+            // 查找包含 class="name" 和 href="/detail/" 的 a 标签
+            if line.contains("class=\"name\"") && line.contains("href=\"/detail/") {
+                // 提取 href 属性
+                let mut movie_url = String::new();
+                if let Some(start) = line.find("href=") {
+                    let start_quote = start + 6; // "href=" 的长度
+                    if let Some(end_quote) = line[start_quote..].find('"') {
+                        let href = &line[start_quote..start_quote + end_quote];
+                        movie_url = if href.starts_with("http") {
+                            href.to_string()
+                        } else {
+                            self.base_url.join(href).unwrap_or(self.base_url.clone()).to_string()
+                        };
+                    }
+                }
+                
+                // 提取电影名称（下一行的 h2 标签内容）
+                let mut movie_name = String::new();
+                if i + 1 < lines.len() {
+                    let h2_line = lines[i + 1];
+                    if h2_line.contains("<h2") {
+                        if let Some(start) = h2_line.find('>') {
+                            let content_start = start + 1;
+                            if let Some(end) = h2_line[content_start..].find('<') {
+                                let name = h2_line[content_start..content_start + end].trim();
+                                movie_name = name.to_string();
                             }
                         }
+                    }
+                }
+                
+                // 如果找到了电影名称和链接，添加到列表
+                if !movie_name.is_empty() && !movie_url.is_empty() {
+                    if !seen_urls.contains_key(&movie_url) {
+                        seen_urls.insert(movie_url.clone(), true);
+                        movies.push(Movie {
+                            name: movie_name,
+                            url: movie_url,
+                        });
                     }
                 }
             }
@@ -195,10 +173,6 @@ impl MovieCrawler {
         Ok(CrawlResult { movies, total })
     }
 
-    pub async fn crawl_with_login(&mut self) -> Result<CrawlResult, CrawlerError> {
-        self.login().await?;
-        self.crawl_movies().await
-    }
 }
 
 pub fn format_json(result: &CrawlResult) -> String {
@@ -300,6 +274,8 @@ mod tests {
         assert_eq!(result.total, 2);
         assert_eq!(result.movies.len(), 2);
     }
+
+
 }
 
 #[cfg(test)]
@@ -315,13 +291,11 @@ mod integration_tests {
         )
         .expect("Failed to create crawler");
 
-        let login_result = crawler.login().await;
-        match login_result {
-            Ok(true) => {
-                println!("Login successful!");
-            }
-            Ok(false) => {
-                println!("Login returned false but no error");
+        // 直接调用 crawl_movies，它包含了登录逻辑
+        let result = crawler.crawl_movies().await;
+        match result {
+            Ok(crawl_result) => {
+                println!("Login successful! Found {} movies", crawl_result.total);
             }
             Err(e) => {
                 println!("Login error (expected in test environment): {}", e);
@@ -338,13 +312,13 @@ mod integration_tests {
         )
         .expect("Failed to create crawler");
 
-        let _ = crawler.login().await;
         let result = crawler.crawl_movies().await;
 
         match result {
             Ok(crawl_result) => {
                 println!("Found {} movies", crawl_result.total);
-                assert!(crawl_result.total >= 0);
+                // 断言电影数量是合理的
+                assert!(crawl_result.total <= 100, "Total movies should be less than or equal to 100");
             }
             Err(e) => {
                 println!("Crawl error (expected in test environment): {}", e);

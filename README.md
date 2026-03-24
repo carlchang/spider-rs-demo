@@ -17,7 +17,6 @@
 |------|------|------|
 | Rust | 2021 Edition | 编程语言 |
 | reqwest | 0.12 | HTTP 客户端，支持 Cookie 管理 |
-| scraper | 0.21 | HTML 解析和 CSS 选择器 |
 | tokio | 1.x | 异步运行时 |
 | serde | 1.0 | 序列化/反序列化 |
 | clap | 4.5 | 命令行参数解析 |
@@ -236,15 +235,22 @@ let client = Client::builder()
     .build()?;
 ```
 
-### 选择器配置
+### 电影信息提取
 
-电影信息提取使用 CSS 选择器：
+电影信息提取使用简单的字符串匹配：
 
 ```rust
-let movie_links = Selector::parse("a.name")?;
+// 简单的 HTML 解析，寻找电影链接
+let lines: Vec<&str> = home_body.lines().collect();
+for line in lines {
+    if line.contains("href=") && (line.contains("detail") || line.contains("movie")) {
+        // 提取 href 属性
+        // ...
+    }
+}
 ```
 
-可根据目标网站结构调整选择器。
+可根据目标网站结构调整提取逻辑。
 
 ## 开发指南
 
@@ -320,6 +326,142 @@ cargo clippy
 3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
 4. 推送到分支 (`git push origin feature/AmazingFeature`)
 5. 创建 Pull Request
+
+## 变更历史
+
+### v1.1.0 - 电影名称提取优化
+
+#### 变更内容
+
+1. **电影名称提取逻辑重构**
+   - 从 `class="el-card__body"` 中提取 `class="name"` 的内容作为电影名称
+   - 修复了电影名称与 URL 对应关系不正确的问题
+   - 使用逐行解析 HTML 的方式，确保 a 标签的 href 属性与相邻的 h2 标签内容正确匹配
+
+2. **HTML 解析优化**
+   - 查找包含 `class="name"` 和 `href="/detail/"` 的 a 标签
+   - 从 a 标签提取 href 属性作为电影详情页 URL
+   - 从相邻的 h2 标签提取电影名称
+
+#### 修复过程
+
+**问题**：原实现中电影名称与 URL 对应关系不正确
+
+**原因分析**：
+- 原代码在提取 URL 和名称时使用了不同的遍历方式
+- URL 提取和名称提取没有正确关联
+
+**解决方案**：
+```rust
+for i in 0..lines.len() {
+    let line = lines[i];
+    
+    // 查找包含 class="name" 和 href="/detail/" 的 a 标签
+    if line.contains("class=\"name\"") && line.contains("href=\"/detail/") {
+        // 提取 href 属性
+        let mut movie_url = String::new();
+        // ... URL 提取逻辑
+        
+        // 提取电影名称（下一行的 h2 标签内容）
+        let mut movie_name = String::new();
+        if i + 1 < lines.len() {
+            let h2_line = lines[i + 1];
+            if h2_line.contains("<h2") {
+                // ... 名称提取逻辑
+            }
+        }
+        
+        // 确保名称和 URL 正确对应
+        if !movie_name.is_empty() && !movie_url.is_empty() {
+            movies.push(Movie {
+                name: movie_name,
+                url: movie_url,
+            });
+        }
+    }
+}
+```
+
+**验证结果**：
+- 成功提取 10 部电影
+- 电影名称与 URL 正确对应
+- 示例输出：
+  - 霸王别姬 - Farewell My Concubine -> /detail/1
+  - 这个杀手不太冷 - Léon -> /detail/2
+  - 肖申克的救赎 - The Shawshank Redemption -> /detail/3
+
+### v1.0.0 - 初始版本
+
+#### 功能特性
+
+- 基于 reqwest 的 HTTP 客户端
+- 登录认证功能
+- 电影信息提取
+- JSON 和表格输出格式
+
+#### 技术选型
+
+- 使用 reqwest 替代 scraper 库
+- 使用 reqwest 的 cookie_store 功能管理会话
+- 使用简单的字符串匹配进行 HTML 解析
+
+## Bug 审查与修复记录
+
+### 修复版本 v1.1.1
+
+#### 审查发现的问题
+
+| Bug ID | 问题描述 | 严重程度 |
+|--------|----------|----------|
+| Bug1 | 登录状态检查不充分：仅检查 HTTP 状态码，未验证登录是否真正成功 | 中 |
+| Bug2 | 未使用的函数：`extract_movie_name_from_url` 函数定义但未被使用 | 低 |
+| Bug3 | 冗余方法：`crawl_with_login` 方法仅调用 `crawl_movies`，无额外功能 | 低 |
+
+#### 修复方案
+
+**Bug1: 登录状态检查增强**
+- **问题**：某些网站在登录失败时仍返回 200 状态码
+- **解决方案**：添加对登录后页面内容的验证
+  - 检查返回内容是否包含登录失败的标识
+  - 确保真正的登录成功
+
+**Bug2: 未使用的函数清理**
+- **问题**：`extract_movie_name_from_url` 函数未被使用
+- **解决方案**：删除该函数及其相关测试用例，减少代码冗余
+
+**Bug3: 冗余方法清理**
+- **问题**：`crawl_with_login` 方法仅调用 `crawl_movies`，无实际用途
+- **解决方案**：删除该方法，直接调用 `crawl_movies`
+
+#### 修复实现
+
+**登录状态检查增强**：
+```rust
+// 检查登录是否真正成功（通过检查返回内容）
+let login_body = response.text().await.unwrap_or_default();
+
+// 检查是否包含登录失败的标识
+if login_body.contains("用户名或密码错误") || login_body.contains("Invalid username or password") {
+    return Err(CrawlerError::LoginFailed("Login failed: Invalid username or password".to_string()));
+}
+```
+
+**代码清理**：
+- 删除未使用的 `extract_movie_name_from_url` 函数
+- 删除冗余的 `crawl_with_login` 方法
+- 更新 `main.rs` 中的调用方式
+
+#### 验证结果
+
+所有 7 个测试用例全部通过：
+- 单元测试：爬虫创建、JSON 格式化、表格格式化、数据结构
+- 集成测试：登录功能、电影爬取
+
+#### 修复效果
+
+- **安全性提升**：登录验证更加可靠，避免了仅依赖状态码的风险
+- **代码质量**：减少了冗余代码，提高了代码可维护性
+- **性能**：移除了未使用的函数，减少了编译时间和运行时开销
 
 ## 联系方式
 

@@ -1,4 +1,4 @@
-use log::{info, warn};
+use log::{debug, info, warn};
 use reqwest::Client;
 use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
@@ -111,7 +111,7 @@ impl MovieCrawler {
         let document = Html::parse_document(&body);
 
         // 提取 class="el-card__body" 中 class="name" 的内容和 href
-        let movie_links = Selector::parse(".el-card__body .name a")
+        let movie_links = Selector::parse("a.name")
             .map_err(|e| CrawlerError::ParseError(e.to_string()))?;
 
         let mut movies: Vec<Movie> = Vec::new();
@@ -136,7 +136,7 @@ impl MovieCrawler {
                 // 从链接中提取电影名称
                 let name = element.text().collect::<String>().trim().to_string();
                 
-                info!("Extracted movie: '{}' - {}", name, url_str);
+                debug!("Extracted movie: '{}' - {}", name, url_str);
 
                 if !name.is_empty() {
                     movies.push(Movie {
@@ -212,8 +212,8 @@ pub fn format_table(result: &CrawlResult) -> String {
     output.push_str("+---------------------+----------------------------------------------------+\n");
 
     for movie in &result.movies {
-        let name = if movie.name.len() > 20 {
-            format!("{}...", &movie.name[..17])
+        let name = if movie.name.chars().count() > 20 {
+            format!("{}...", movie.name.chars().take(17).collect::<String>())
         } else {
             movie.name.clone()
         };

@@ -47,8 +47,7 @@ impl MovieCrawler {
             .build()
             .map_err(|e| CrawlerError::NetworkError(e.to_string()))?;
 
-        let base_url = Url::parse(base_url)
-            .map_err(|e| CrawlerError::ParseError(e.to_string()))?;
+        let base_url = Url::parse(base_url).map_err(|e| CrawlerError::ParseError(e.to_string()))?;
 
         Ok(Self {
             client,
@@ -59,10 +58,7 @@ impl MovieCrawler {
     }
 
     pub async fn crawl_movies(&mut self) -> Result<CrawlResult, CrawlerError> {
-        info!(
-            "Starting to crawl movies from {}",
-            self.base_url
-        );
+        info!("Starting to crawl movies from {}", self.base_url);
 
         // 首先使用 reqwest 登录
         let login_url = self.base_url.join("login").unwrap_or(self.base_url.clone());
@@ -81,15 +77,22 @@ impl MovieCrawler {
             .map_err(|e| CrawlerError::NetworkError(e.to_string()))?;
 
         if !response.status().is_success() {
-            return Err(CrawlerError::LoginFailed(format!("Login failed with status: {}", response.status())));
+            return Err(CrawlerError::LoginFailed(format!(
+                "Login failed with status: {}",
+                response.status()
+            )));
         }
 
         // 检查登录是否真正成功（通过检查返回内容）
         let login_body = response.text().await.unwrap_or_default();
-        
+
         // 检查是否包含登录失败的标识（根据网站实际情况调整）
-        if login_body.contains("用户名或密码错误") || login_body.contains("Invalid username or password") {
-            return Err(CrawlerError::LoginFailed("Login failed: Invalid username or password".to_string()));
+        if login_body.contains("用户名或密码错误")
+            || login_body.contains("Invalid username or password")
+        {
+            return Err(CrawlerError::LoginFailed(
+                "Login failed: Invalid username or password".to_string(),
+            ));
         }
 
         info!("Login successful");
@@ -105,24 +108,16 @@ impl MovieCrawler {
 
         let home_body = home_response.text().await.unwrap_or_default();
 
-        // 调试：保存 HTML 内容到文件
-        use std::fs::File;
-        use std::io::Write;
-        if let Ok(mut file) = File::create("debug_home.html") {
-            let _ = file.write_all(home_body.as_bytes());
-            info!("Saved home page HTML to debug_home.html");
-        }
-
         // 解析 HTML 提取电影链接和名称
         let mut movies: Vec<Movie> = Vec::new();
         let mut seen_urls: HashMap<String, bool> = HashMap::new();
 
         // 简单的 HTML 解析，寻找电影信息
         let lines: Vec<&str> = home_body.lines().collect();
-        
+
         for i in 0..lines.len() {
             let line = lines[i];
-            
+
             // 查找包含 class="name" 和 href="/detail/" 的 a 标签
             if line.contains("class=\"name\"") && line.contains("href=\"/detail/") {
                 // 提取 href 属性
@@ -134,11 +129,14 @@ impl MovieCrawler {
                         movie_url = if href.starts_with("http") {
                             href.to_string()
                         } else {
-                            self.base_url.join(href).unwrap_or(self.base_url.clone()).to_string()
+                            self.base_url
+                                .join(href)
+                                .unwrap_or(self.base_url.clone())
+                                .to_string()
                         };
                     }
                 }
-                
+
                 // 提取电影名称（下一行的 h2 标签内容）
                 let mut movie_name = String::new();
                 if i + 1 < lines.len() {
@@ -153,16 +151,16 @@ impl MovieCrawler {
                         }
                     }
                 }
-                
-                // 如果找到了电影名称和链接，添加到列表
-                if !movie_name.is_empty() && !movie_url.is_empty() {
-                    if !seen_urls.contains_key(&movie_url) {
-                        seen_urls.insert(movie_url.clone(), true);
-                        movies.push(Movie {
-                            name: movie_name,
-                            url: movie_url,
-                        });
-                    }
+
+                if !movie_name.is_empty()
+                    && !movie_url.is_empty()
+                    && !seen_urls.contains_key(&movie_url)
+                {
+                    seen_urls.insert(movie_url.clone(), true);
+                    movies.push(Movie {
+                        name: movie_name,
+                        url: movie_url,
+                    });
                 }
             }
         }
@@ -172,7 +170,6 @@ impl MovieCrawler {
 
         Ok(CrawlResult { movies, total })
     }
-
 }
 
 pub fn format_json(result: &CrawlResult) -> String {
@@ -181,9 +178,12 @@ pub fn format_json(result: &CrawlResult) -> String {
 
 pub fn format_table(result: &CrawlResult) -> String {
     let mut output = String::new();
-    output.push_str("+---------------------+----------------------------------------------------+\n");
-    output.push_str("| Movie Name          | URL                                                |\n");
-    output.push_str("+---------------------+----------------------------------------------------+\n");
+    output
+        .push_str("+---------------------+----------------------------------------------------+\n");
+    output
+        .push_str("| Movie Name          | URL                                                |\n");
+    output
+        .push_str("+---------------------+----------------------------------------------------+\n");
 
     for movie in &result.movies {
         let name = if movie.name.chars().count() > 20 {
@@ -199,7 +199,8 @@ pub fn format_table(result: &CrawlResult) -> String {
         output.push_str(&format!("| {:<20} | {:<50} |\n", name, url));
     }
 
-    output.push_str("+---------------------+----------------------------------------------------+\n");
+    output
+        .push_str("+---------------------+----------------------------------------------------+\n");
     output.push_str(&format!("Total: {} movies found\n", result.total));
     output
 }
@@ -274,8 +275,6 @@ mod tests {
         assert_eq!(result.total, 2);
         assert_eq!(result.movies.len(), 2);
     }
-
-
 }
 
 #[cfg(test)]
@@ -284,12 +283,8 @@ mod integration_tests {
 
     #[tokio::test]
     async fn test_login_functionality() {
-        let mut crawler = MovieCrawler::new(
-            "https://login2.scrape.center/",
-            "admin",
-            "admin",
-        )
-        .expect("Failed to create crawler");
+        let mut crawler = MovieCrawler::new("https://login2.scrape.center/", "admin", "admin")
+            .expect("Failed to create crawler");
 
         // 直接调用 crawl_movies，它包含了登录逻辑
         let result = crawler.crawl_movies().await;
@@ -305,12 +300,8 @@ mod integration_tests {
 
     #[tokio::test]
     async fn test_crawl_movies() {
-        let mut crawler = MovieCrawler::new(
-            "https://login2.scrape.center/",
-            "admin",
-            "admin",
-        )
-        .expect("Failed to create crawler");
+        let mut crawler = MovieCrawler::new("https://login2.scrape.center/", "admin", "admin")
+            .expect("Failed to create crawler");
 
         let result = crawler.crawl_movies().await;
 
@@ -318,7 +309,10 @@ mod integration_tests {
             Ok(crawl_result) => {
                 println!("Found {} movies", crawl_result.total);
                 // 断言电影数量是合理的
-                assert!(crawl_result.total <= 100, "Total movies should be less than or equal to 100");
+                assert!(
+                    crawl_result.total <= 100,
+                    "Total movies should be less than or equal to 100"
+                );
             }
             Err(e) => {
                 println!("Crawl error (expected in test environment): {}", e);

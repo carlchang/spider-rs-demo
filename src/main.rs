@@ -19,16 +19,11 @@ struct Args {
     output: OutputFormat,
 }
 
-#[derive(Debug, Clone, ValueEnum)]
+#[derive(Debug, Clone, ValueEnum, Default)]
 enum OutputFormat {
+    #[default]
     Json,
     Table,
-}
-
-impl Default for OutputFormat {
-    fn default() -> Self {
-        OutputFormat::Json
-    }
 }
 
 #[tokio::main]

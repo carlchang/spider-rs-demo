@@ -102,3 +102,79 @@ Add AGENTS.md and code quality improvements
 3. 添加性能基准测试
 4. 实现请求重试机制
 5. 添加请求速率限制功能
+
+---
+
+## 2026-03-29 - 模块化重构
+
+### 重构目标
+根据功能模块拆分 `src/lib.rs`，提升项目代码的可维护性及可测试性。
+
+### 重构内容
+
+#### 1. 新增模块文件
+
+| 文件 | 功能 |
+|------|------|
+| `src/auth.rs` | 登录认证逻辑 |
+| `src/session.rs` | 会话管理 (HTTP客户端配置) |
+| `src/parser.rs` | HTML解析逻辑 |
+| `src/crawler.rs` | 爬虫主逻辑 |
+| `src/error.rs` | 错误类型定义 |
+| `src/types.rs` | 数据结构定义 |
+
+#### 2. lib.rs 重构为门面模式
+
+```rust
+pub mod auth;
+pub mod crawler;
+pub mod error;
+pub mod parser;
+pub mod session;
+pub mod types;
+
+pub use auth::login;
+pub use crawler::MovieCrawler;
+pub use error::CrawlerError;
+pub use types::{CrawlResult, Movie};
+```
+
+#### 3. 模块职责划分
+
+**auth.rs** - 认证逻辑
+- `login()` 函数：处理登录表单提交、响应验证
+
+**session.rs** - 会话管理
+- `Session` 结构体：封装HTTP客户端、base_url、凭据
+- 提供客户端访问接口
+
+**parser.rs** - HTML解析
+- `parse_movies()` 函数：提取电影信息
+- `extract_url()`、`extract_name_from_lines()` 辅助函数
+
+**crawler.rs** - 爬虫编排
+- `MovieCrawler` 结构体：协调认证、请求、解析
+- `crawl_movies()` 方法：完整爬取流程
+
+### 测试增强
+
+| 模块 | 原有测试 | 新增测试 |
+|------|----------|----------|
+| auth | 0 | 1 |
+| session | 0 | 3 |
+| parser | 0 | 5 |
+| crawler | 0 | 2 |
+| lib | 7 | 7 |
+
+**总测试数**: 7 → 18
+
+### 验证结果
+
+| 检查项 | 状态 |
+|--------|------|
+| `cargo check` | ✓ 通过 |
+| `cargo fmt` | ✓ 格式化完成 |
+| `cargo clippy -- -D warnings` | ✓ 无警告 |
+| `cargo test` | ✓ 18/18 测试通过 |
+| 功能验证 (JSON输出) | ✓ 10部电影 |
+| 功能验证 (Table输出) | ✓ 表格格式正确 |

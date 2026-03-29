@@ -112,10 +112,26 @@ mod integration_tests {
 ## Project Structure
 ```
 src/
-├── lib.rs          # Core library (MovieCrawler, errors)
-└── main.rs         # CLI entry point
+├── lib.rs          # Library facade (re-exports, formatters)
+├── main.rs         # CLI entry point
+├── auth.rs         # Authentication logic (login)
+├── crawler.rs      # Main crawler (MovieCrawler)
+├── error.rs        # Error types (CrawlerError)
+├── parser.rs       # HTML parsing logic
+├── session.rs      # Session management (HTTP client)
+├── types.rs        # Data types (Movie, CrawlResult)
 rust/toolchain.bzl  # Bazel Rust toolchain config
 ```
+
+### Module Responsibilities
+| Module | Purpose |
+|--------|---------|
+| `auth.rs` | Login authentication logic |
+| `crawler.rs` | Main crawler orchestration |
+| `error.rs` | Error type definitions |
+| `parser.rs` | HTML content parsing |
+| `session.rs` | HTTP client & session state |
+| `types.rs` | Shared data structures |
 
 ## Key Dependencies
 | Crate | Purpose |

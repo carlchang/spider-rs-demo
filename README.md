@@ -1,5 +1,7 @@
 # Spider-RS-Demo
 
+[English](README.md) | [中文](README_zh.md)
+
 A Rust-based movie information crawler with login authentication, session management, and multiple output formats.
 
 ## Features
@@ -40,9 +42,14 @@ spider-rs-demo/
 ├── BUILD              # Bazel build file
 ├── MODULE.bazel       # Bazel module configuration
 ├── WORKSPACE          # Bazel workspace
-├── AGENTS.md          # Development guidelines for AI agents
-├── CHANGELOG.md       # Change history
-├── FIX_PROCESS.md     # Bug fixes and improvements
+├── README.md          # English documentation
+├── README_zh.md       # Chinese documentation
+├── AGENTS.md          # Development guidelines (English)
+├── AGENTS_zh.md       # Development guidelines (Chinese)
+├── CHANGELOG.md       # Change history (English)
+├── CHANGELOG_zh.md    # Change history (Chinese)
+├── FIX_PROCESS.md     # Bug fixes (English)
+├── FIX_PROCESS_zh.md  # Bug fixes (Chinese)
 └── OPTIMIZE_LOG.md    # Optimization records
 ```
 
@@ -305,9 +312,19 @@ cargo clippy -- -D warnings  # Strict mode
 
 ## Documentation
 
+### English
+- [README.md](README.md) - English documentation (default)
 - [AGENTS.md](AGENTS.md) - Development guidelines for AI agents
 - [CHANGELOG.md](CHANGELOG.md) - Change history
 - [FIX_PROCESS.md](FIX_PROCESS.md) - Bug fixes and improvements
+
+### 中文
+- [README_zh.md](README_zh.md) - 中文说明文档
+- [AGENTS_zh.md](AGENTS_zh.md) - AI 代理开发指南
+- [CHANGELOG_zh.md](CHANGELOG_zh.md) - 变更日志
+- [FIX_PROCESS_zh.md](FIX_PROCESS_zh.md) - 修复过程记录
+
+### Other
 - [OPTIMIZE_LOG.md](OPTIMIZE_LOG.md) - Optimization records
 - [BUILD_GUIDE.md](BUILD_GUIDE.md) - Build instructions
 

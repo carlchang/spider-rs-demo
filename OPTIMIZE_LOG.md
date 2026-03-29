@@ -178,3 +178,69 @@ pub use types::{CrawlResult, Movie};
 | `cargo test` | ✓ 18/18 测试通过 |
 | 功能验证 (JSON输出) | ✓ 10部电影 |
 | 功能验证 (Table输出) | ✓ 表格格式正确 |
+
+---
+
+## 2026-03-29 - Bazel 配置更新
+
+### 问题诊断
+
+重构后发现 Bazel 配置存在以下问题：
+
+| 问题 | 描述 |
+|------|------|
+| 源文件不完整 | BUILD 中 `srcs = ["src/lib.rs"]` 未包含新增模块 |
+| 无效依赖 | 引用了不存在的 `spider` 和 `scraper` crate |
+| rules_rust 版本过旧 | 0.48.0 不兼容 Bazel 9.0 |
+
+### 修复内容
+
+#### 1. 更新 BUILD 文件
+
+```python
+# 使用 glob 包含所有模块文件
+rust_library(
+    name = "spider_rs_demo",
+    srcs = glob(["src/*.rs"]),  # 而不是 ["src/lib.rs"]
+    deps = [
+        "@crate_index//:reqwest",
+        "@crate_index//:tokio",
+        "@crate_index//:serde",
+        "@crate_index//:serde_json",
+        "@crate_index//:url",
+        "@crate_index//:thiserror",
+        "@crate_index//:log",
+    ],
+)
+```
+
+#### 2. 更新 MODULE.bazel (Bazel 9.x 配置)
+
+```python
+module(
+    name = "spider_rs_demo",
+    version = "0.1.0",
+)
+
+bazel_dep(name = "rules_rust", version = "0.51.0")
+
+register_toolchains("@rules_rust//rust:all")
+```
+
+#### 3. 更新 WORKSPACE (Bazel 9.x 配置)
+
+```python
+workspace(name = "spider_rs_demo")
+
+bazel_dep(name = "rules_rust", version = "0.51.0")
+
+register_toolchains("@rules_rust//rust:all")
+```
+
+### 验证结果
+
+| 检查项 | 状态 | 备注 |
+|--------|------|------|
+| Cargo 构建 | ✓ | 所有测试通过 |
+| Cargo 测试 | ✓ | 18/18 |
+| Bazel 配置 | ✓ | 配置已更新 |

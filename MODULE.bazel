@@ -3,4 +3,6 @@ module(
     version = "0.1.0",
 )
 
-bazel_dep(name = "rules_rust", version = "0.48.0")
+bazel_dep(name = "rules_rust", version = "0.51.0")
+
+register_toolchains("@rules_rust//rust:all")
